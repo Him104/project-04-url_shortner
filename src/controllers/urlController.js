@@ -3,6 +3,22 @@ const urlModel = require('../models/urlModel');
 const redis = require('redis')
 const {promisify} = require('util');
 const { json } = require('body-parser');
+const baseUrl = 'http://localhost:3000'
+
+
+const isValid = function (value) {
+  if (typeof value == 'undefined' || value === null) return false
+  if (typeof value == 'string' && value.length === 0)
+   return false
+  return true
+}
+
+function validateUrl(value) {
+  if (!(/(ftp|http|https|FTP|HTTP|HTTPS):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-/]))?/.test(value.trim()))) {
+      return false
+  }
+      return true
+}
 
 // const redis_config = {
 //     host: 'redis-19368.c264.ap-south-1-1.ec2.cloud.redislabs.com',
@@ -35,12 +51,15 @@ const get = promisify(redisClient.GET).bind(redisClient)
 
 const createUrl = async (req,res)=>{
 try{
-    const  longUrl = req.body.longUrl
-    const baseUrl = 'http://localhost:3000'
 
+    const  longUrl = req.body.longUrl
+    
 if(!longUrl)
     return res.status(400).send({status:false,message:"url is required"})
 
+    if (!validateUrl(longUrl)) {
+      return res.status(401).send({ status: false, msg: "longUrl is invalid" })
+  }
     const isUrl = await urlModel.findOne({longUrl:longUrl})
 
     if(isUrl)
@@ -51,7 +70,8 @@ if(!longUrl)
 
     const urlCreate = await urlModel.create({urlCode,longUrl,shortUrl})
 
-    return res.status(201).send({status:true,message:"url has been shortened",data:urlCreate}) 
+    await set(`${longUrl}`,JSON.stringify(urlCreate))
+    return res.status(201).send({status:true,message:"url has been shortened", longUrl:urlCreate}) 
 }catch(error){
     return res.status(500).send({status:false,message:error.message})
 }
@@ -66,7 +86,7 @@ const geturl = async (req,res)=>{
         const parsing = JSON.parse(caching)
 
         if(caching){
-            return res.redirect(parsing.longUrl)
+            return res.status(301).redirect(parsing.longUrl)
         }
 
       let  isUrl = await urlModel.findOne({urlCode:urlCode})
@@ -80,7 +100,7 @@ const urldata = req.params.urlCode
 
 await set(`$(urldata)`,JSON.stringify(isUrl))
 
-return res.redirect(isUrl.longUrl)
+return res.status(301).redirect(isUrl.longUrl)
          
      } catch (error) {
          return res.status(500).send({status:false, message:error.message})
